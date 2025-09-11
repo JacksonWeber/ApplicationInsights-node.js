@@ -1,0 +1,11 @@
+{
+  "name": "@microsoft/azuremonitor-autoinstrumentation",
+  "version": "3.2.5",
+  "description": "Azure Monitor OpenTelemetry InProc Agent",
+  "main": "app.js",
+  "author": "Microsoft Corporation",
+  "license": "MIT",
+  "dependencies": {
+    "applicationinsights": "3.7.0"
+  }
+}
