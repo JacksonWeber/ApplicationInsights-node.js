@@ -56,6 +56,109 @@ export function useAzureMonitor(options?: AzureMonitorOpenTelemetryOptions) {
     }
     
     distroUseAzureMonitor(options);
+    
+    // Comprehensive logging to inspect created metricReaders and metricExporters
+    console.log("=== POST DISTRO ANALYSIS START ===");
+    
+    try {
+        const meterProvider = metrics.getMeterProvider() as MeterProvider;
+        console.log("MeterProvider type:", meterProvider.constructor.name);
+        console.log("MeterProvider instance:", meterProvider);
+        
+        // Access internal state to inspect metric readers and exporters
+        const meterProviderInternal = meterProvider as any;
+        console.log("MeterProvider internal keys:", Object.keys(meterProviderInternal));
+        
+        if (meterProviderInternal._sharedState) {
+            console.log("MeterProvider _sharedState:", meterProviderInternal._sharedState);
+            console.log("MeterProvider _sharedState keys:", Object.keys(meterProviderInternal._sharedState));
+            
+            if (meterProviderInternal._sharedState.metricCollectors) {
+                const metricCollectors = meterProviderInternal._sharedState.metricCollectors;
+                console.log("Number of metric collectors:", metricCollectors.length);
+                
+                metricCollectors.forEach((collector: any, index: number) => {
+                    console.log(`\n--- Metric Collector ${index} ---`);
+                    console.log("Collector type:", collector.constructor.name);
+                    console.log("Collector keys:", Object.keys(collector));
+                    
+                    if (collector._metricReader) {
+                        const metricReader = collector._metricReader;
+                        console.log("MetricReader type:", metricReader.constructor.name);
+                        console.log("MetricReader keys:", Object.keys(metricReader));
+                        
+                        if (metricReader._exporter) {
+                            const exporter = metricReader._exporter;
+                            console.log("Exporter type:", exporter.constructor.name);
+                            console.log("Exporter keys:", Object.keys(exporter));
+                            
+                            // Log exporter configuration
+                            if (exporter._otlpExporter) {
+                                console.log("Underlying OTLP Exporter:", exporter._otlpExporter.constructor.name);
+                                console.log("Underlying OTLP Exporter keys:", Object.keys(exporter._otlpExporter));
+                            }
+                            
+                            // Check for delegate pattern
+                            if (exporter._delegate) {
+                                console.log("Exporter delegate type:", exporter._delegate.constructor.name);
+                                console.log("Exporter delegate keys:", Object.keys(exporter._delegate));
+                                
+                                if (exporter._delegate._transport) {
+                                    console.log("Transport type:", exporter._delegate._transport.constructor.name);
+                                    console.log("Transport keys:", Object.keys(exporter._delegate._transport));
+                                    
+                                    if (exporter._delegate._transport._transport) {
+                                        const innerTransport = exporter._delegate._transport._transport;
+                                        console.log("Inner transport type:", innerTransport.constructor.name);
+                                        console.log("Inner transport keys:", Object.keys(innerTransport));
+                                        
+                                        if (innerTransport._parameters) {
+                                            console.log("Transport parameters:", innerTransport._parameters);
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            // For Azure Monitor exporters
+                            if (exporter._azureExporter) {
+                                console.log("Azure Exporter type:", exporter._azureExporter.constructor.name);
+                            }
+                        }
+                        
+                        // Log metric reader configuration
+                        if (metricReader._exportIntervalMillis) {
+                            console.log("Export interval (ms):", metricReader._exportIntervalMillis);
+                        }
+                        if (metricReader._exportTimeoutMillis) {
+                            console.log("Export timeout (ms):", metricReader._exportTimeoutMillis);
+                        }
+                    }
+                });
+            }
+            
+            if (meterProviderInternal._sharedState.metricReaders) {
+                console.log("\nDirect metric readers:", meterProviderInternal._sharedState.metricReaders);
+            }
+        }
+        
+        // Log options that were passed to the distro
+        console.log("\nOptions passed to distro:");
+        console.log("- metricReaders length:", options?.metricReaders?.length || 0);
+        if (options?.metricReaders) {
+            options.metricReaders.forEach((reader: any, index: number) => {
+                console.log(`  MetricReader ${index}:`, reader.constructor.name);
+                if (reader._exporter) {
+                    console.log(`    Exporter:`, reader._exporter.constructor.name);
+                }
+            });
+        }
+        
+    } catch (error) {
+        console.error("Error during metric provider inspection:", error);
+    }
+    
+    console.log("=== POST DISTRO ANALYSIS END ===\n");
+    
     const logApi = new LogApi(logs.getLogger("ApplicationInsightsLogger"));
     autoCollectLogs = new AutoCollectLogs();
     if (internalConfig.enableAutoCollectExceptions) {

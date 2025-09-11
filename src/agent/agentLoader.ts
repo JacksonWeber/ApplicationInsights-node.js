@@ -115,18 +115,35 @@ export class AgentLoader {
     }
 
     public initialize() {
+        console.log("=== AGENT LOADER: Initialize method called ===");
+        console.log("AgentLoader: _canLoad =", this._canLoad);
+        console.log("AgentLoader: NODE_JS_RUNTIME_MAJOR_VERSION =", NODE_JS_RUNTIME_MAJOR_VERSION);
+        
         if (!this._canLoad) {
             const msg = `Cannot load Azure Monitor Application Insights Distro because of unsupported Node.js runtime, currently running in version ${NODE_JS_RUNTIME_MAJOR_VERSION}`;
             console.log(msg);
+            console.log("=== AGENT LOADER: Initialize aborted - unsupported runtime ===");
             return;
         }
+        console.log("AgentLoader: Runtime is supported, proceeding with validation");
+        
         if (this._validate()) {
+            console.log("=== AGENT LOADER: Validation passed, initializing distro ===");
+            console.log("AgentLoader: _instrumentationKey =", this._instrumentationKey ? "present" : "missing");
+            console.log("AgentLoader: _aadCredential =", this._aadCredential ? "present" : "missing");
+            console.log("AgentLoader: _options before init =", JSON.stringify(this._options, null, 2));
+            
             try {
                 // Set environment variable to auto attach so the distro is aware of the attach state
                 process.env[AZURE_MONITOR_AUTO_ATTACH] = "true";
+                console.log("AgentLoader: Set AZURE_MONITOR_AUTO_ATTACH env var");
+                
                 // Initialize Distro
                 this._options.azureMonitorExporterOptions.credential = this._aadCredential;
+                console.log("=== AGENT LOADER: Calling useAzureMonitor ===");
                 useAzureMonitor(this._options);
+                console.log("=== AGENT LOADER: useAzureMonitor call completed ===");
+                
                 // Agent successfully initialized
                 const diagnosticLog: IDiagnosticLog = {
                     message: "Azure Monitor Application Insights Distro was started succesfully.",
@@ -136,8 +153,11 @@ export class AgentLoader {
                 this._statusLogger.logStatus({
                     AgentInitializedSuccessfully: true
                 });
+                console.log("=== AGENT LOADER: Initialize completed successfully ===");
             }
             catch (error) {
+                console.log("=== AGENT LOADER: Error during initialization ===");
+                console.error("AgentLoader error:", error);
                 const msg = `Error initializaing Azure Monitor Application Insights Distro.${Util.getInstance().dumpObj(error)}`;
                 const diagnosticLog: IDiagnosticLog = {
                     message: msg,
@@ -148,13 +168,20 @@ export class AgentLoader {
                     AgentInitializedSuccessfully: false,
                     Reason: msg
                 })
+                console.log("=== AGENT LOADER: Initialize failed ===");
             }
+        } else {
+            console.log("=== AGENT LOADER: Validation failed, not initializing ===");
         }
     }
 
     private _validate(): boolean {
+        console.log("=== AGENT LOADER: _validate method called ===");
+        console.log("AgentLoader: forceStart =", forceStart);
+        
         try {
             if (!forceStart && this._sdkAlreadyExists()) {
+                console.log("AgentLoader: SDK already exists, validation failed");
                 this._statusLogger.logStatus({
                     AgentInitializedSuccessfully: false,
                     SDKPresent: true,
@@ -162,7 +189,10 @@ export class AgentLoader {
                 })
                 return false;
             }
+            console.log("AgentLoader: SDK not already present, checking instrumentation key");
+            
             if (this._instrumentationKey === "unknown") {
+                console.log("AgentLoader: No valid instrumentation key found, validation failed");
                 const diagnosticLog: IDiagnosticLog = {
                     message: "Azure Monitor Application Insights Distro wanted to be started, but no Connection String was provided",
                     messageId: DiagnosticMessageId.missingIkey
@@ -174,6 +204,7 @@ export class AgentLoader {
                 });
                 return false;
             }
+            console.log("AgentLoader: Validation passed - instrumentation key present");
             return true;
         }
         catch (err: any) {
