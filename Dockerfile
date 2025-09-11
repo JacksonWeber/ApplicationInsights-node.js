@@ -45,6 +45,9 @@ COPY --from=builder /usr/src/app/agents /agents
 WORKDIR /agents/nodejs
 RUN npm install
 
+# Ensure azure-monitor-opentelemetry-exporter is installed (should be included from package.json dependencies)
+RUN npm install azure-monitor-opentelemetry-exporter-1.0.0-beta.34.tgz
+
 # Replace the applicationinsights package in node_modules with our compiled code
 RUN rm -rf node_modules/applicationinsights && \
     mkdir -p node_modules/applicationinsights && \
