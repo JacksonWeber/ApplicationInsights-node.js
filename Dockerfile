@@ -46,14 +46,14 @@ WORKDIR /agents/nodejs
 RUN npm install
 
 # Ensure azure-monitor-opentelemetry-exporter is installed (should be included from package.json dependencies)
-RUN npm install azure-monitor-opentelemetry-exporter-1.0.0-beta.34.tgz
+# RUN npm install azure-monitor-opentelemetry-exporter-1.0.0-beta.34.tgz
 # RUN npm install azure-monitor-opentelemetry-1.13.1.tgz
-# RUN npm install opentelemetry-exporter-metrics-otlp-http-0.204.0.tgz
-# RUN npm install opentelemetry-exporter-metrics-otlp-proto-0.204.0.tgz
-# RUN npm install opentelemetry-otlp-exporter-base-0.204.0.tgz
-# RUN npm install opentelemetry-otlp-transformer-0.204.0.tgz
-# RUN npm install opentelemetry-sdk-metrics-2.1.0.tgz
-# RUN npm install opentelemetry-sdk-node-0.204.0.tgz
+RUN npm install opentelemetry-exporter-metrics-otlp-http-0.204.0.tgz
+RUN npm install opentelemetry-exporter-metrics-otlp-proto-0.204.0.tgz
+RUN npm install opentelemetry-otlp-exporter-base-0.204.0.tgz
+RUN npm install opentelemetry-otlp-transformer-0.204.0.tgz
+RUN npm install opentelemetry-sdk-metrics-2.1.0.tgz
+RUN npm install opentelemetry-sdk-node-0.204.0.tgz
 
 # Replace the applicationinsights package in node_modules with our compiled code
 RUN rm -rf node_modules/applicationinsights && \
