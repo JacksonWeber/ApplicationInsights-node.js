@@ -54,6 +54,45 @@ export class AKSLoader extends AgentLoader {
                     }
                 )
             );
+
+            // Create metricReaders array and add OTLP reader if environment variables request it
+            try {
+                const metricReaders: MetricReader[] = [];
+                if (
+                    process.env.OTEL_METRICS_EXPORTER === "otlp" &&
+                    (process.env.OTEL_EXPORTER_OTLP_ENDPOINT || process.env.OTEL_EXPORTER_OTLP_METRICS_ENDPOINT)
+                ) {
+                    try {
+                        // Determine which exporter to use based on protocol setting
+                        const protocol = process.env.OTEL_EXPORTER_OTLP_METRICS_PROTOCOL || 
+                                       process.env.OTEL_EXPORTER_OTLP_PROTOCOL;
+                        
+                        let otlpExporter;
+                        if (protocol === 'http/json') {
+                            otlpExporter = new OTLPHttpMetricExporter();
+                        } else {
+                            // Use protobuf for 'http/protobuf', 'grpc', or any other value
+                            otlpExporter = new OTLPProtoMetricExporter();
+                        }
+
+                        const otlpMetricReader = new PeriodicExportingMetricReader({
+                            exporter: otlpExporter,
+                            exportIntervalMillis: OTLP_METRIC_EXPORTER_EXPORT_INTERVAL,
+                        });
+
+                        metricReaders.push(otlpMetricReader);
+                    } catch (error) {
+                        console.warn("AKSLoader: Failed to create OTLP metric reader:", error);
+                    }
+                }
+
+                // Attach metricReaders to the options so the distro can consume them
+                if ((metricReaders || []).length > 0) {
+                    this._options.metricReaders = metricReaders;
+                }
+            } catch (err) {
+                console.warn("AKSLoader: Error while preparing metricReaders:", err);
+            }
         }
     }
 }
