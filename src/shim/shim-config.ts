@@ -391,54 +391,58 @@ class Config implements IConfig {
 
     /**
      * Translate the v2 `maxBatchSize` setting onto the OpenTelemetry
-     * BatchSpanProcessor / BatchLogRecordProcessor `maxExportBatchSize` knob via
-     * the SDK-supported environment variables. This restores the v2 behaviour
-     * where a customer-set batch size was honored, instead of silently falling
-     * back to the OTel default of 512 telemetry items per export.
+     * BatchSpanProcessor / BatchLogRecordProcessor `maxExportBatchSize` knob.
      *
-     * Environment variables already set by the caller are left untouched so the
-     * user retains the ability to override via process environment.
+     * The Azure Monitor distro (and our own TelemetryClientProvider) construct
+     * these processors without an explicit batching config, so they fall back
+     * to the OTel SDK environment variables. Writing those env vars is how we
+     * restore the v2 behavior where a customer-set batch size was honored
+     * instead of silently defaulting to OTel's 512 items per export.
      */
     private _applyMaxBatchSize(maxBatchSize: number): void {
-        const defaultMaxQueueSize = 2048;
-        const bspBatchEnv = "OTEL_BSP_MAX_EXPORT_BATCH_SIZE";
-        const blrpBatchEnv = "OTEL_BLRP_MAX_EXPORT_BATCH_SIZE";
-        const bspQueueEnv = "OTEL_BSP_MAX_QUEUE_SIZE";
-        const blrpQueueEnv = "OTEL_BLRP_MAX_QUEUE_SIZE";
+        this._setOtelBatchSize("OTEL_BSP_MAX_EXPORT_BATCH_SIZE", "OTEL_BSP_MAX_QUEUE_SIZE", maxBatchSize);
+        this._setOtelBatchSize("OTEL_BLRP_MAX_EXPORT_BATCH_SIZE", "OTEL_BLRP_MAX_QUEUE_SIZE", maxBatchSize);
+    }
 
-        const applyPair = (batchEnv: string, queueEnv: string) => {
-            const existingBatch = process.env[batchEnv];
-            if (existingBatch !== undefined && existingBatch !== "") {
-                if (Number(existingBatch) !== maxBatchSize) {
-                    this._configWarnings.push(
-                        `${batchEnv} is already set to "${existingBatch}"; the maxBatchSize=${maxBatchSize} configuration value was not applied because the environment variable takes precedence.`
-                    );
-                }
+    /**
+     * Apply the requested batch size to a single pair of OTel env vars
+     * (one pair for spans, one for log records), while:
+     *   - never overriding a value the user already set in the environment, and
+     *   - preserving the OTel invariant `maxExportBatchSize <= maxQueueSize`.
+     */
+    private _setOtelBatchSize(batchSizeEnv: string, queueSizeEnv: string, requestedBatchSize: number): void {
+        const OTEL_DEFAULT_QUEUE_SIZE = 2048;
+
+        // 1. If the user already set the batch-size env var, honor it.
+        const existingBatchSize = process.env[batchSizeEnv];
+        if (existingBatchSize) {
+            if (Number(existingBatchSize) !== requestedBatchSize) {
+                this._configWarnings.push(
+                    `${batchSizeEnv} is already set to "${existingBatchSize}"; the maxBatchSize=${requestedBatchSize} configuration value was not applied because the environment variable takes precedence.`
+                );
+            }
+            return;
+        }
+
+        // 2. OTel requires maxExportBatchSize <= maxQueueSize. Figure out the
+        //    effective queue size and decide whether we need to raise it.
+        const userQueueSize = process.env[queueSizeEnv] ? Number(process.env[queueSizeEnv]) : undefined;
+        const effectiveQueueSize = userQueueSize ?? OTEL_DEFAULT_QUEUE_SIZE;
+
+        if (requestedBatchSize > effectiveQueueSize) {
+            if (userQueueSize !== undefined) {
+                // User pinned the queue size — don't override it; skip applying the batch size.
+                this._configWarnings.push(
+                    `maxBatchSize=${requestedBatchSize} is greater than ${queueSizeEnv}="${process.env[queueSizeEnv]}". OpenTelemetry requires maxExportBatchSize <= maxQueueSize, so the maxBatchSize value was not applied via ${batchSizeEnv}.`
+                );
                 return;
             }
+            // No user-set queue size — raise the queue so the requested batch fits.
+            process.env[queueSizeEnv] = String(requestedBatchSize);
+        }
 
-            const existingQueue = process.env[queueEnv];
-            const existingQueueValue = existingQueue !== undefined && existingQueue !== "" ? Number(existingQueue) : undefined;
-            const effectiveQueueSize = existingQueueValue ?? defaultMaxQueueSize;
-
-            if (maxBatchSize > effectiveQueueSize) {
-                if (existingQueueValue !== undefined) {
-                    // Respect the user-set queue env var, but warn that we can't satisfy the OTel invariant
-                    // (maxExportBatchSize <= maxQueueSize) without overriding their value.
-                    this._configWarnings.push(
-                        `maxBatchSize=${maxBatchSize} is greater than ${queueEnv}="${existingQueue}". OpenTelemetry requires maxExportBatchSize <= maxQueueSize, so the maxBatchSize value was not applied via ${batchEnv}.`
-                    );
-                    return;
-                }
-                // No user-set queue size — raise it to fit the requested batch size.
-                process.env[queueEnv] = String(maxBatchSize);
-            }
-
-            process.env[batchEnv] = String(maxBatchSize);
-        };
-
-        applyPair(bspBatchEnv, bspQueueEnv);
-        applyPair(blrpBatchEnv, blrpQueueEnv);
+        // 3. Apply the requested batch size.
+        process.env[batchSizeEnv] = String(requestedBatchSize);
     }
 }
 
