@@ -345,7 +345,6 @@ describe("shim/configuration/config", () => {
                 delete process.env.OTEL_BSP_MAX_QUEUE_SIZE;
                 delete process.env.OTEL_BLRP_MAX_QUEUE_SIZE;
                 const config = new Config(connectionString);
-                const warnings = config["_configWarnings"];
                 config.maxBatchSize = 50;
                 config.parseConfig();
                 assert.strictEqual(process.env.OTEL_BSP_MAX_EXPORT_BATCH_SIZE, "50", "OTEL_BSP_MAX_EXPORT_BATCH_SIZE should be set to the requested batch size");
@@ -353,7 +352,6 @@ describe("shim/configuration/config", () => {
                 // Queue size should not be touched when batch <= default queue (2048)
                 assert.strictEqual(process.env.OTEL_BSP_MAX_QUEUE_SIZE, undefined);
                 assert.strictEqual(process.env.OTEL_BLRP_MAX_QUEUE_SIZE, undefined);
-                assert.ok(checkWarnings("The maxBatchSize configuration option was applied via the OpenTelemetry environment variables", warnings), "informational warning about translation was not raised");
             });
 
             it("should not override existing OTEL_BSP / OTEL_BLRP batch env vars when maxBatchSize is set", () => {

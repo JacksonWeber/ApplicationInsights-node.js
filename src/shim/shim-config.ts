@@ -439,10 +439,6 @@ class Config implements IConfig {
 
         applyPair(bspBatchEnv, bspQueueEnv);
         applyPair(blrpBatchEnv, blrpQueueEnv);
-
-        this._configWarnings.push(
-            `The maxBatchSize configuration option was applied via the OpenTelemetry environment variables ${bspBatchEnv} and ${blrpBatchEnv}. This is a process-wide setting that affects every BatchSpanProcessor / BatchLogRecordProcessor created without an explicit configuration.`
-        );
     }
 }
 
