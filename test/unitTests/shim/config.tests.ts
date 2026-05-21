@@ -37,13 +37,13 @@ describe("shim/configuration/config", () => {
     let sandbox: sinon.SinonSandbox;
 
     beforeEach(() => {
-        originalEnv = process.env;
+        originalEnv = { ...process.env };
         sandbox = sinon.createSandbox();
     });
 
     afterEach(() => {
         sandbox.restore();
-        process.env = originalEnv;
+        process.env = { ...originalEnv };
     })
 
     describe("#Shim config()", () => {
@@ -320,7 +320,7 @@ describe("shim/configuration/config", () => {
                 const warnings = config["_configWarnings"];
                 config.enableResendInterval = 1;
                 config.parseConfig();
-                assert.ok(checkWarnings("The resendInterval configuration option is not supported by the shim.", warnings), "warning was not raised");
+                assert.ok(checkWarnings("The resendInterval configuration option cannot currently be translated by the shim", warnings), "warning was not raised");
             });
 
             it("should warn if max bytes on disk is set", () => {
@@ -328,7 +328,7 @@ describe("shim/configuration/config", () => {
                 const warnings = config["_configWarnings"];
                 config.enableMaxBytesOnDisk = 1;
                 config.parseConfig();
-                assert.ok(checkWarnings("The maxBytesOnDisk configuration option is not supported by the shim.", warnings), "warning was not raised");
+                assert.ok(checkWarnings("The maxBytesOnDisk configuration option cannot currently be translated by the shim", warnings), "warning was not raised");
             });
 
             it("should warn if ignore legacy headers is false", () => {
@@ -339,12 +339,74 @@ describe("shim/configuration/config", () => {
                 assert.ok(checkWarnings("LegacyHeaders are not supported by the shim.", warnings), "warning was not raised");
             });
 
-            it("should warn if max batch size is set", () => {
+            it("should translate maxBatchSize into OpenTelemetry batch env vars", () => {
+                delete process.env.OTEL_BSP_MAX_EXPORT_BATCH_SIZE;
+                delete process.env.OTEL_BLRP_MAX_EXPORT_BATCH_SIZE;
+                delete process.env.OTEL_BSP_MAX_QUEUE_SIZE;
+                delete process.env.OTEL_BLRP_MAX_QUEUE_SIZE;
                 const config = new Config(connectionString);
                 const warnings = config["_configWarnings"];
-                config.maxBatchSize = 1;
+                config.maxBatchSize = 50;
                 config.parseConfig();
-                assert.ok(checkWarnings("The maxBatchSize configuration option is not supported by the shim.", warnings), "warning was not raised");
+                assert.strictEqual(process.env.OTEL_BSP_MAX_EXPORT_BATCH_SIZE, "50", "OTEL_BSP_MAX_EXPORT_BATCH_SIZE should be set to the requested batch size");
+                assert.strictEqual(process.env.OTEL_BLRP_MAX_EXPORT_BATCH_SIZE, "50", "OTEL_BLRP_MAX_EXPORT_BATCH_SIZE should be set to the requested batch size");
+                // Queue size should not be touched when batch <= default queue (2048)
+                assert.strictEqual(process.env.OTEL_BSP_MAX_QUEUE_SIZE, undefined);
+                assert.strictEqual(process.env.OTEL_BLRP_MAX_QUEUE_SIZE, undefined);
+                assert.ok(checkWarnings("The maxBatchSize configuration option was applied via the OpenTelemetry environment variables", warnings), "informational warning about translation was not raised");
+            });
+
+            it("should not override existing OTEL_BSP / OTEL_BLRP batch env vars when maxBatchSize is set", () => {
+                process.env.OTEL_BSP_MAX_EXPORT_BATCH_SIZE = "128";
+                process.env.OTEL_BLRP_MAX_EXPORT_BATCH_SIZE = "256";
+                const config = new Config(connectionString);
+                const warnings = config["_configWarnings"];
+                config.maxBatchSize = 50;
+                config.parseConfig();
+                assert.strictEqual(process.env.OTEL_BSP_MAX_EXPORT_BATCH_SIZE, "128", "existing env var must not be overridden");
+                assert.strictEqual(process.env.OTEL_BLRP_MAX_EXPORT_BATCH_SIZE, "256", "existing env var must not be overridden");
+                assert.ok(checkWarnings("OTEL_BSP_MAX_EXPORT_BATCH_SIZE is already set", warnings), "conflict warning was not raised");
+                assert.ok(checkWarnings("OTEL_BLRP_MAX_EXPORT_BATCH_SIZE is already set", warnings), "conflict warning was not raised");
+            });
+
+            it("should raise the queue size when maxBatchSize exceeds the OTel default", () => {
+                delete process.env.OTEL_BSP_MAX_EXPORT_BATCH_SIZE;
+                delete process.env.OTEL_BLRP_MAX_EXPORT_BATCH_SIZE;
+                delete process.env.OTEL_BSP_MAX_QUEUE_SIZE;
+                delete process.env.OTEL_BLRP_MAX_QUEUE_SIZE;
+                const config = new Config(connectionString);
+                config.maxBatchSize = 5000;
+                config.parseConfig();
+                assert.strictEqual(process.env.OTEL_BSP_MAX_EXPORT_BATCH_SIZE, "5000");
+                assert.strictEqual(process.env.OTEL_BLRP_MAX_EXPORT_BATCH_SIZE, "5000");
+                assert.strictEqual(process.env.OTEL_BSP_MAX_QUEUE_SIZE, "5000", "queue size should be raised to satisfy maxExportBatchSize <= maxQueueSize");
+                assert.strictEqual(process.env.OTEL_BLRP_MAX_QUEUE_SIZE, "5000", "queue size should be raised to satisfy maxExportBatchSize <= maxQueueSize");
+            });
+
+            it("should not override a user-set queue size that is smaller than maxBatchSize", () => {
+                delete process.env.OTEL_BSP_MAX_EXPORT_BATCH_SIZE;
+                delete process.env.OTEL_BLRP_MAX_EXPORT_BATCH_SIZE;
+                process.env.OTEL_BSP_MAX_QUEUE_SIZE = "1000";
+                process.env.OTEL_BLRP_MAX_QUEUE_SIZE = "1000";
+                const config = new Config(connectionString);
+                const warnings = config["_configWarnings"];
+                config.maxBatchSize = 5000;
+                config.parseConfig();
+                assert.strictEqual(process.env.OTEL_BSP_MAX_QUEUE_SIZE, "1000", "user-set queue env must not be overridden");
+                assert.strictEqual(process.env.OTEL_BLRP_MAX_QUEUE_SIZE, "1000", "user-set queue env must not be overridden");
+                assert.strictEqual(process.env.OTEL_BSP_MAX_EXPORT_BATCH_SIZE, undefined, "batch size must not be set when it would violate the OTel invariant");
+                assert.strictEqual(process.env.OTEL_BLRP_MAX_EXPORT_BATCH_SIZE, undefined, "batch size must not be set when it would violate the OTel invariant");
+                assert.ok(checkWarnings("OpenTelemetry requires maxExportBatchSize <= maxQueueSize", warnings), "invariant violation warning was not raised");
+            });
+
+            it("should ignore non-positive maxBatchSize values", () => {
+                delete process.env.OTEL_BSP_MAX_EXPORT_BATCH_SIZE;
+                delete process.env.OTEL_BLRP_MAX_EXPORT_BATCH_SIZE;
+                const config = new Config(connectionString);
+                config.maxBatchSize = 0;
+                config.parseConfig();
+                assert.strictEqual(process.env.OTEL_BSP_MAX_EXPORT_BATCH_SIZE, undefined);
+                assert.strictEqual(process.env.OTEL_BLRP_MAX_EXPORT_BATCH_SIZE, undefined);
             });
 
             it("should warn if logger errors are set to traces", () => {

@@ -344,16 +344,16 @@ class Config implements IConfig {
             this._configWarnings.push(`AI only distributed tracing mode is no longer supported. ${UNSUPPORTED_MSG}`);
         }
         if (this.enableResendInterval) {
-            this._configWarnings.push(`The resendInterval configuration option is not supported by the shim. ${UNSUPPORTED_MSG}`);
+            this._configWarnings.push(`The resendInterval configuration option cannot currently be translated by the shim because the underlying Azure Monitor exporter does not expose an equivalent public option. ${UNSUPPORTED_MSG}`);
         }
         if (this.enableMaxBytesOnDisk) {
-            this._configWarnings.push(`The maxBytesOnDisk configuration option is not supported by the shim. ${UNSUPPORTED_MSG}`);
+            this._configWarnings.push(`The maxBytesOnDisk configuration option cannot currently be translated by the shim because the underlying Azure Monitor exporter does not expose an equivalent public option. To disable offline storage entirely use setUseDiskRetryCaching(false). ${UNSUPPORTED_MSG}`);
         }
         if (this.ignoreLegacyHeaders === false) {
             this._configWarnings.push(`LegacyHeaders are not supported by the shim. ${UNSUPPORTED_MSG}`);
         }
-        if (this.maxBatchSize) {
-            this._configWarnings.push(`The maxBatchSize configuration option is not supported by the shim. ${UNSUPPORTED_MSG}`);
+        if (typeof this.maxBatchSize === "number" && this.maxBatchSize > 0) {
+            this._applyMaxBatchSize(this.maxBatchSize);
         }
         if (this.enableLoggerErrorToTrace) {
             this._configWarnings.push(`The enableLoggerErrorToTrace configuration option is not supported by the shim. ${UNSUPPORTED_MSG}`);
@@ -387,6 +387,62 @@ class Config implements IConfig {
             this._configWarnings.push(`Please configure the quickPulseHost in the connection string instead. ${UNSUPPORTED_MSG}`);
         }
         return options;
+    }
+
+    /**
+     * Translate the v2 `maxBatchSize` setting onto the OpenTelemetry
+     * BatchSpanProcessor / BatchLogRecordProcessor `maxExportBatchSize` knob via
+     * the SDK-supported environment variables. This restores the v2 behaviour
+     * where a customer-set batch size was honored, instead of silently falling
+     * back to the OTel default of 512 telemetry items per export.
+     *
+     * Environment variables already set by the caller are left untouched so the
+     * user retains the ability to override via process environment.
+     */
+    private _applyMaxBatchSize(maxBatchSize: number): void {
+        const defaultMaxQueueSize = 2048;
+        const bspBatchEnv = "OTEL_BSP_MAX_EXPORT_BATCH_SIZE";
+        const blrpBatchEnv = "OTEL_BLRP_MAX_EXPORT_BATCH_SIZE";
+        const bspQueueEnv = "OTEL_BSP_MAX_QUEUE_SIZE";
+        const blrpQueueEnv = "OTEL_BLRP_MAX_QUEUE_SIZE";
+
+        const applyPair = (batchEnv: string, queueEnv: string) => {
+            const existingBatch = process.env[batchEnv];
+            if (existingBatch !== undefined && existingBatch !== "") {
+                if (Number(existingBatch) !== maxBatchSize) {
+                    this._configWarnings.push(
+                        `${batchEnv} is already set to "${existingBatch}"; the maxBatchSize=${maxBatchSize} configuration value was not applied because the environment variable takes precedence.`
+                    );
+                }
+                return;
+            }
+
+            const existingQueue = process.env[queueEnv];
+            const existingQueueValue = existingQueue !== undefined && existingQueue !== "" ? Number(existingQueue) : undefined;
+            const effectiveQueueSize = existingQueueValue ?? defaultMaxQueueSize;
+
+            if (maxBatchSize > effectiveQueueSize) {
+                if (existingQueueValue !== undefined) {
+                    // Respect the user-set queue env var, but warn that we can't satisfy the OTel invariant
+                    // (maxExportBatchSize <= maxQueueSize) without overriding their value.
+                    this._configWarnings.push(
+                        `maxBatchSize=${maxBatchSize} is greater than ${queueEnv}="${existingQueue}". OpenTelemetry requires maxExportBatchSize <= maxQueueSize, so the maxBatchSize value was not applied via ${batchEnv}.`
+                    );
+                    return;
+                }
+                // No user-set queue size — raise it to fit the requested batch size.
+                process.env[queueEnv] = String(maxBatchSize);
+            }
+
+            process.env[batchEnv] = String(maxBatchSize);
+        };
+
+        applyPair(bspBatchEnv, bspQueueEnv);
+        applyPair(blrpBatchEnv, blrpQueueEnv);
+
+        this._configWarnings.push(
+            `The maxBatchSize configuration option was applied via the OpenTelemetry environment variables ${bspBatchEnv} and ${blrpBatchEnv}. This is a process-wide setting that affects every BatchSpanProcessor / BatchLogRecordProcessor created without an explicit configuration.`
+        );
     }
 }
 
