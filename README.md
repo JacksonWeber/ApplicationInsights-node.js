@@ -17,7 +17,7 @@ Azure VMs and Web Apps, and even other public clouds. This solution is based on 
 > *Important:* The Azure Monitor OpenTelemetry-based Offerings for Node.js applications do not support older versions of Node that were supported by
 Application Insights 2.X SDK. If you rely on this support, please continue to use version 2.X.
 
-Starting with version 3.17.0, this SDK requires Node.js 22.0.0 or later, as required by its Azure Monitor OpenTelemetry dependencies. Supported Node.js versions must also be [supported by OpenTelemetry](https://github.com/open-telemetry/opentelemetry-js#supported-runtimes).
+We support the versions of Node.js that are [supported by OpenTelemetry](https://github.com/open-telemetry/opentelemetry-js#supported-runtimes).
 
 ## Limitations of Application Insights 3.X SDK
 
@@ -40,7 +40,7 @@ To determine if this version of Application Insights is right for you, review th
 - Azure subscription: [Create an Azure subscription for free](https://azure.microsoft.com/free/)
 - Application Insights resource: [Create an Application Insights resource](create-workspace-resource.md#create-a-workspace-based-resource)
 
-- Application using Node.js 22.0.0 or later and an officially [supported version](https://github.com/Azure/azure-sdk-for-js/tree/main/sdk/monitor/monitor-opentelemetry-exporter#currently-supported-environments) of the runtime:
+- Application using an officially [supported version](https://github.com/Azure/azure-sdk-for-js/tree/main/sdk/monitor/monitor-opentelemetry-exporter#currently-supported-environments) of Node.js runtime:
   - [OpenTelemetry supported runtimes](https://github.com/open-telemetry/opentelemetry-js#supported-runtimes)
   - [Azure Monitor OpenTelemetry Exporter supported runtimes](https://github.com/Azure/azure-sdk-for-js/tree/main/sdk/monitor/monitor-opentelemetry-exporter#currently-supported-environments)
 
